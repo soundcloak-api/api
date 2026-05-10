@@ -1,0 +1,24 @@
+{
+  "instance": "https://sc1.maid.zone",
+  "preferences": {
+    "player": "restream",
+    "restreamAudio": "mp3",
+    "hlsAudio": "aac",
+    "proxyStreams": false,
+    "proxyImages": false,
+    "parseDescriptions": true,
+    "showAudio": true,
+    "searchSuggestions": true,
+    "dynamicLoadComments": true,
+    "keepPlayerFocus": false,
+    "waveform": false,
+    "fullyPreloadTrack": false,
+    "autoplayNextTrack": true,
+    "defaultAutoplayMode": "normal",
+    "autoplayNextRelatedTrack": true
+  },
+  "pagination": {
+    "defaultLimit": 20,
+    "maxLimit": 50
+  }
+}

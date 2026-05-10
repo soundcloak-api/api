@@ -1,0 +1,7 @@
+name = "soundcloak-api"
+compatibility_date = "2024-01-01"
+pages_build_output_dir = "public"
+
+[vars]
+# Override at runtime via CF dashboard if needed
+# INSTANCE_URL = "https://sc1.maid.zone"
