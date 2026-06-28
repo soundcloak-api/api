@@ -1,3 +1,5 @@
+![Banner](/public/assets/banner.png)
+
 # soundcloak-api
 
 A JSON REST API wrapper for [soundcloak](https://git.maid.zone/stuff/soundcloak) — a SoundCloud privacy frontend. Deploy it to Cloudflare Pages in minutes.
