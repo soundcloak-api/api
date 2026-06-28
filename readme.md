@@ -9,7 +9,7 @@ license: other
 app_file: server.js
 ---
 
-![Banner](/public/assets/banner.png)
+![Banner](https://images.unsplash.com/photo-1739675242031-cb6c3b076e4f?fm=jpg&q=60&w=3000&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1yZWxhdGVkfDE3fHx8ZW58MHx8fHx8)
 
 # soundcloak-api
 
