@@ -19,12 +19,15 @@ export async function onRequestGet({ request, params }) {
       tracks: `${origin}/api/user/${permalink}/tracks`,
       popular_tracks: `${origin}/api/user/${permalink}/popular-tracks`,
       playlists: `${origin}/api/user/${permalink}/playlists`,
+      sets: `${origin}/api/user/${permalink}/playlists`,
       albums: `${origin}/api/user/${permalink}/albums`,
       reposts: `${origin}/api/user/${permalink}/reposts`,
       likes: `${origin}/api/user/${permalink}/likes`,
       followers: `${origin}/api/user/${permalink}/followers`,
       following: `${origin}/api/user/${permalink}/following`,
       related: `${origin}/api/user/${permalink}/related`,
+      station: data.station_urn ? `${origin}/api/station/${encodeURIComponent(data.station_urn || `soundcloud:system-playlists:artist-stations:${data.id}`)}` : null,
+      rss_feed: `${BASE}/_/rss/${permalink}`,
     };
 
     return json(user);

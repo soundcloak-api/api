@@ -6,6 +6,33 @@ import {
   handleOptions, proxyImage, proxyStream, BASE, PREFS
 } from './utils.js';
 
+let cachedClientId = null;
+let clientIdExpiry = 0;
+
+async function getSoundCloudClientId() {
+  if (cachedClientId && Date.now() < clientIdExpiry) return cachedClientId;
+
+  const page = await fetch('https://soundcloud.com', {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
+  });
+  const html = await page.text();
+
+  const scripts = [...html.matchAll(/<script[^>]+src="(https:\/\/a-v2\.sndcdn\.com\/assets\/[^"]+\.js)"/g)].map(m => m[1]);
+
+  for (const src of scripts.slice(-5)) {
+    const js = await fetch(src, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    const text = await js.text();
+    const match = text.match(/client_id\s*:\s*"([a-zA-Z0-9]{32})"/);
+    if (match) {
+      cachedClientId = match[1];
+      clientIdExpiry = Date.now() + 1000 * 60 * 60 * 6;
+      return cachedClientId;
+    }
+  }
+
+  throw new Error('Could not extract SoundCloud client_id');
+}
+
 const config = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
 
 const app = express();
@@ -301,15 +328,18 @@ app.get('/api/user/:permalink/popular-tracks', async (req, res) => {
   try {
     const { permalink } = req.params;
     const origin = getOriginFromRequest(req);
-    const { limit, cursor } = parsePaginationFromQuery(req.query);
 
     const data = await proxy("/_/api/v2/resolve", { url: `https://soundcloud.com/${permalink}` });
     if (!data || data.kind !== "user") return errorResponse(res, "User not found", 404);
 
-    const tracksData = await proxy(`/_/api/v2/users/${data.id}/popular-tracks`, { limit, cursor });
-    const formatted = formatPaginated(tracksData, (t) => formatTrack(t, origin));
+    const tracksData = await proxy(`/_/api/v2/users/${data.id}/toptracks`, { limit: 20 });
+    const tracks = (tracksData.collection || []).map((t) => formatTrack(t, origin));
 
-    res.json(formatted);
+    res.json({
+      user: { id: data.id, permalink: data.permalink, username: data.username },
+      count: tracks.length,
+      collection: tracks,
+    });
   } catch (err) {
     errorResponse(res, "Popular tracks fetch failed", 502, err.message);
   }
@@ -357,14 +387,27 @@ app.get('/api/user/:permalink/reposts', async (req, res) => {
     const origin = getOriginFromRequest(req);
     const { limit, cursor } = parsePaginationFromQuery(req.query);
 
-    const data = await proxy("/_/api/v2/resolve", { url: `https://soundcloud.com/${permalink}` });
-    if (!data || data.kind !== "user") return errorResponse(res, "User not found", 404);
+    const user = await proxy("/_/api/v2/resolve", { url: `https://soundcloud.com/${permalink}` });
+    if (!user || user.kind !== "user") return errorResponse(res, "User not found", 404);
 
-    const repostsData = await proxy(`/_/api/v2/users/${data.id}/reposts`, { limit, cursor });
-    const formatted = formatPaginated(repostsData, (item) => {
-      if (item.kind === "track") return { kind: "track", ...formatTrack(item, origin) };
-      if (item.kind === "playlist" || item.kind === "album") return { kind: item.kind, ...formatPlaylist(item, false, origin) };
-      return { kind: item.kind, raw: item };
+    const clientId = await getSoundCloudClientId();
+    const params = new URLSearchParams({ limit, client_id: clientId });
+    if (cursor) params.set('pagination', cursor);
+
+    const scRes = await fetch(`https://api-v2.soundcloud.com/stream/users/${user.id}/reposts?${params}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Accept: 'application/json',
+      },
+    });
+
+    if (!scRes.ok) return errorResponse(res, "Upstream reposts fetch failed", 502, `HTTP ${scRes.status}`);
+
+    const data = await scRes.json();
+    const formatted = formatPaginated(data, (r) => {
+      if (r.type === "track-repost" && r.track) return { kind: "track", ...formatTrack(r.track, origin) };
+      if (r.type === "playlist-repost" && r.playlist) return { kind: "playlist", ...formatPlaylist(r.playlist, false, origin) };
+      return { kind: r.type || "unknown", raw: r };
     });
 
     res.json(formatted);
@@ -382,11 +425,13 @@ app.get('/api/user/:permalink/likes', async (req, res) => {
     const data = await proxy("/_/api/v2/resolve", { url: `https://soundcloud.com/${permalink}` });
     if (!data || data.kind !== "user") return errorResponse(res, "User not found", 404);
 
-    const likesData = await proxy(`/_/api/v2/users/${data.id}/likes`, { limit, cursor });
-    const formatted = formatPaginated(likesData, (item) => {
-      if (item.kind === "track") return { kind: "track", ...formatTrack(item, origin) };
-      if (item.kind === "playlist" || item.kind === "album") return { kind: item.kind, ...formatPlaylist(item, false, origin) };
-      return { kind: item.kind, raw: item };
+    const params = { limit };
+    if (cursor) params.pagination = cursor;
+    const likesData = await proxy(`/_/api/v2/users/${data.id}/likes`, params);
+    const formatted = formatPaginated(likesData, (l) => {
+      if (l.track) return { kind: "track", ...formatTrack(l.track, origin) };
+      if (l.playlist) return { kind: "playlist", ...formatPlaylist(l.playlist, false, origin) };
+      return { kind: "unknown", raw: l };
     });
 
     res.json(formatted);
@@ -435,15 +480,18 @@ app.get('/api/user/:permalink/related', async (req, res) => {
   try {
     const { permalink } = req.params;
     const origin = getOriginFromRequest(req);
-    const { limit, cursor } = parsePaginationFromQuery(req.query);
 
     const data = await proxy("/_/api/v2/resolve", { url: `https://soundcloud.com/${permalink}` });
     if (!data || data.kind !== "user") return errorResponse(res, "User not found", 404);
 
-    const relatedData = await proxy(`/_/api/v2/users/${data.id}/related`, { limit, cursor });
-    const formatted = formatPaginated(relatedData, (u) => formatUser(u, false, origin));
+    const relatedData = await proxy(`/_/api/v2/users/${data.id}/relatedartists`, { limit: 20 });
+    const users = (relatedData.collection || []).map((u) => formatUser(u, false, origin));
 
-    res.json(formatted);
+    res.json({
+      user: { id: data.id, permalink: data.permalink, username: data.username },
+      count: users.length,
+      collection: users,
+    });
   } catch (err) {
     errorResponse(res, "Related users fetch failed", 502, err.message);
   }
