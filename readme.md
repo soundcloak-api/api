@@ -6,6 +6,7 @@ colorTo: indigo
 sdk: docker
 pinned: false
 license: other
+app_file: server.js
 ---
 
 ![Banner](/public/assets/banner.png)
